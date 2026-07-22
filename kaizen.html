@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Kaizen — daily tasks &amp; shrine</title>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kaizen">
+<meta name="theme-color" content="#fdf6f8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -353,9 +358,9 @@
 
   async function loadState(){
     try{
-      const res = await window.storage.get(STORE_KEY, false);
-      if(res && res.value){
-        const p = JSON.parse(res.value);
+      const raw = window.localStorage.getItem(STORE_KEY);
+      if(raw){
+        const p = JSON.parse(raw);
         state.tasks = p.tasks || state.tasks;
         state.taskLog = p.taskLog || {};
         state.taskOrder = p.taskOrder || {};
@@ -369,8 +374,8 @@
   let saveTimer=null;
   function saveState(){
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async ()=>{
-      try{ await window.storage.set(STORE_KEY, JSON.stringify(state), false); }
+    saveTimer = setTimeout(()=>{
+      try{ window.localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
       catch(e){ showToast("Couldn't save — try again"); }
     }, 150);
   }
@@ -1256,6 +1261,14 @@
   const guadalupeImg = new Image();
   guadalupeImg.src = "data:image/png;base64," + GUADALUPE_IMG_B64;
   guadalupeImg.addEventListener("load", ()=>{ guadalupeThumbCache=null; renderCenterpiecePalette(); });
+
+  // home-screen icon for "Add to Home Screen" — reuses the torii artwork already embedded above
+  (function setHomeScreenIcon(){
+    const link = document.createElement("link");
+    link.rel = "apple-touch-icon";
+    link.href = "data:image/png;base64," + TORII_IMG_B64;
+    document.head.appendChild(link);
+  })();
 
   // the actual pixel-art Guadalupe artwork provided by the user, background removed, drawn at the
   // same footprint/position as the other centerpieces
