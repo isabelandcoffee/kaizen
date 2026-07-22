@@ -84,11 +84,11 @@
   .task-list{ display:flex; flex-direction:column; gap:8px; }
   .task-row{
     display:flex; align-items:center; gap:10px; background: var(--card-2); border: 1px solid var(--line);
-    border-radius: 12px; padding: 10px 12px; touch-action:none;
+    border-radius: 12px; padding: 10px 12px;
   }
   .task-row.dragging{ opacity:0.5; }
   .task-row.completed{ background: transparent; border-style:dashed; opacity:0.6; }
-  .drag-handle{ color: var(--ink-dim); font-size:16px; cursor:grab; padding:2px 4px; line-height:1; }
+  .drag-handle{ color: var(--ink-dim); font-size:16px; cursor:grab; padding:2px 4px; line-height:1; touch-action:none; }
   .task-check{
     width: 24px; height:24px; border-radius: 8px; border: 2px solid var(--primary-dark);
     display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; font-size: 14px; color: transparent;
@@ -97,6 +97,7 @@
   .task-row .tname{ flex:1; font-size:13px; }
   .task-row.completed .tname{ text-decoration: line-through; color: var(--ink-dim); }
   .task-row .trepeat{ font-size: 10px; color: var(--ink-dim); background:#fff; border:1px solid var(--line); border-radius:6px; padding:2px 6px; }
+  .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:14px; cursor:pointer; }
   .task-row .del{ color: var(--ink-dim); background:none; border:none; font-size:15px; cursor:pointer; }
   .task-divider{ font-size:10px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:0.5px; margin: 12px 0 6px; }
 
@@ -251,8 +252,8 @@
 
   <div class="streak-strip">
     <div>
-      <div class="num" id="streakNum">0</div>
-      <div class="lbl">day streak</div>
+      <div class="num" id="activeTasksNum">0</div>
+      <div class="lbl">tasks left</div>
     </div>
     <div class="week-dots" id="weekDots"></div>
   </div>
@@ -322,7 +323,7 @@
 
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal-sheet">
-    <h2>New task</h2>
+    <h2 id="modalTitle">New task</h2>
     <div class="add-row">
       <input type="text" id="newTaskName" placeholder="Task name" maxlength="24" style="width:100%;">
     </div>
@@ -406,11 +407,9 @@
     if(!applicable.length) return false;
     return applicable.every(t=> isTaskDone(t.id, dateKey));
   }
-  function computeStreak(){
-    let streak=0; let d=new Date();
-    if(!dayIsComplete(todayKey())) d.setDate(d.getDate()-1);
-    while(dayIsComplete(keyFor(d))){ streak++; d.setDate(d.getDate()-1); }
-    return streak;
+  function countActiveTasks(){
+    const today = todayKey();
+    return state.tasks.filter(taskAppliesToday).filter(t=> !isTaskDone(t.id, today)).length;
   }
 
   /* ================= TASKS TAB ================= */
@@ -419,7 +418,7 @@
     state.taskLog[dateKey][id] = !state.taskLog[dateKey][id];
     saveState();
     renderTaskList();
-    document.getElementById("streakNum").textContent = computeStreak();
+    document.getElementById("activeTasksNum").textContent = countActiveTasks();
     renderWeekDots();
   }
 
@@ -470,8 +469,13 @@
       '<div class="task-check'+(done?" done":"")+'">'+(done?"✓":"")+'</div>'+
       '<span class="tname">'+escapeHtml(t.name)+'</span>'+
       '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
+      '<button class="edit" data-id="'+t.id+'" title="Edit">✎</button>'+
       '<button class="del" data-id="'+t.id+'">✕</button>';
     row.querySelector(".task-check").addEventListener("click", ()=> toggleTask(t.id, today));
+    row.querySelector(".edit").addEventListener("click",(ev)=>{
+      ev.stopPropagation();
+      openTaskModal(t);
+    });
     row.querySelector(".del").addEventListener("click",(ev)=>{
       ev.stopPropagation();
       state.tasks = state.tasks.filter(x=>x.id!==t.id);
@@ -536,11 +540,25 @@
     });
   }
 
-  /* ---- Add task modal ---- */
+  /* ---- Add/edit task modal ---- */
   const overlay = document.getElementById("modalOverlay");
-  document.getElementById("fabAddTask").addEventListener("click", ()=>{ overlay.classList.add("show"); });
-  document.getElementById("cancelTaskBtn").addEventListener("click", ()=>{ overlay.classList.remove("show"); });
-  overlay.addEventListener("click",(ev)=>{ if(ev.target===overlay) overlay.classList.remove("show"); });
+  let editingTaskId = null;
+  function closeTaskModal(){ overlay.classList.remove("show"); editingTaskId = null; }
+  function openTaskModal(task){
+    editingTaskId = task ? task.id : null;
+    document.getElementById("modalTitle").textContent = task ? "Edit task" : "New task";
+    document.getElementById("addTaskBtn").textContent = task ? "Save" : "Add task";
+    document.getElementById("newTaskName").value = task ? task.name : "";
+    newTaskRepeatMode = (task && Array.isArray(task.repeat)) ? "custom" : "daily";
+    newTaskWeekdays = new Set(task && Array.isArray(task.repeat) ? task.repeat : []);
+    document.querySelectorAll("#repeatToggle .rt-btn").forEach(b=>b.classList.toggle("on", b.dataset.mode===newTaskRepeatMode));
+    document.getElementById("weekdayPicker").style.display = newTaskRepeatMode==="custom" ? "flex":"none";
+    document.querySelectorAll("#weekdayPicker .wd-btn").forEach((b,idx)=> b.classList.toggle("on", newTaskWeekdays.has(idx)));
+    overlay.classList.add("show");
+  }
+  document.getElementById("fabAddTask").addEventListener("click", ()=>{ openTaskModal(null); });
+  document.getElementById("cancelTaskBtn").addEventListener("click", closeTaskModal);
+  overlay.addEventListener("click",(ev)=>{ if(ev.target===overlay) closeTaskModal(); });
 
   let newTaskRepeatMode = "daily";
   let newTaskWeekdays = new Set();
@@ -569,7 +587,13 @@
     if(!name){ showToast("Give the task a name"); return; }
     if(newTaskRepeatMode==="custom" && newTaskWeekdays.size===0){ showToast("Pick at least one day"); return; }
     const repeat = newTaskRepeatMode==="daily" ? "daily" : Array.from(newTaskWeekdays).sort();
-    state.tasks.push({id:"t"+Date.now(), name, repeat});
+    const wasEditing = !!editingTaskId;
+    if(wasEditing){
+      const task = state.tasks.find(x=>x.id===editingTaskId);
+      if(task){ task.name = name; task.repeat = repeat; }
+    } else {
+      state.tasks.push({id:"t"+Date.now(), name, repeat});
+    }
     nameInput.value="";
     newTaskRepeatMode="daily"; newTaskWeekdays=new Set();
     document.querySelectorAll("#repeatToggle .rt-btn").forEach(b=>b.classList.toggle("on", b.dataset.mode==="daily"));
@@ -577,10 +601,10 @@
     document.querySelectorAll("#weekdayPicker .wd-btn").forEach(b=>b.classList.remove("on"));
     saveState();
     renderTaskList();
-    document.getElementById("streakNum").textContent = computeStreak();
+    document.getElementById("activeTasksNum").textContent = countActiveTasks();
     renderWeekDots();
-    overlay.classList.remove("show");
-    showToast("Task added");
+    closeTaskModal();
+    showToast(wasEditing ? "Task updated" : "Task added");
   });
 
   function renderWeekDots(){
@@ -793,8 +817,16 @@
       grid.appendChild(el);
     });
   }
+  // guards against stray ghost icons / leaked listeners piling up if a previous drag never got
+  // a clean pointerup (e.g. the OS interrupted the touch with a system gesture)
+  let activeCenterpieceDrag = null;
   function startCenterpieceDrag(ev, item){
     ev.preventDefault();
+    if(activeCenterpieceDrag) activeCenterpieceDrag.cleanup();
+
+    const target = ev.currentTarget;
+    try{ target.setPointerCapture(ev.pointerId); }catch(e){}
+
     const ghost = document.createElement("img");
     ghost.src = iconUrlFor(item.type);
     ghost.style.position="fixed"; ghost.style.width="40px"; ghost.style.height="40px";
@@ -802,19 +834,28 @@
     ghost.style.zIndex=999; ghost.style.left=ev.clientX+"px"; ghost.style.top=ev.clientY+"px";
     ghost.style.transform="translate(-50%,-50%)";
     document.body.appendChild(ghost);
+
     function move(e){ ghost.style.left=e.clientX+"px"; ghost.style.top=e.clientY+"px"; }
-    function up(e){
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", up);
+    function drop(e){
       const rect = document.querySelector(".shrine-wrap").getBoundingClientRect();
       if(e.clientX>=rect.left && e.clientX<=rect.right && e.clientY>=rect.top && e.clientY<=rect.bottom){
         state.shrine.centerpiece = item.type;
         saveState(); renderCenterpiecePalette(); showToast(item.name+" placed");
       }
-      ghost.remove();
+      cleanup();
     }
-    document.addEventListener("pointermove", move);
-    document.addEventListener("pointerup", up);
+    function cleanup(){
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", drop);
+      target.removeEventListener("pointercancel", cleanup);
+      try{ target.releasePointerCapture(ev.pointerId); }catch(e){}
+      ghost.remove();
+      activeCenterpieceDrag = null;
+    }
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", drop);
+    target.addEventListener("pointercancel", cleanup);
+    activeCenterpieceDrag = { cleanup };
   }
 
   /* ---- Prayers: each one is a folded shide-style paper hanging from the rope; tap to unfold and read ---- */
@@ -1475,7 +1516,7 @@
   function renderAll(){
     document.getElementById("dateLabel").textContent = new Date().toLocaleDateString(undefined,{weekday:"long", month:"long", day:"numeric"});
     renderTaskList();
-    document.getElementById("streakNum").textContent = computeStreak();
+    document.getElementById("activeTasksNum").textContent = countActiveTasks();
     renderWeekDots();
     const activePanel = document.querySelector(".panel.active");
     if(activePanel && activePanel.id==="panel-shrine"){
