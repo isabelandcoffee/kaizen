@@ -1,5 +1,16 @@
 # Kaizen — Project Context for Claude Code
 
+**IMPORTANT — READ THIS FIRST: There are no separate asset/image files in this
+project, anywhere.** Every image (torii, boulder... no wait, boulder is
+code-drawn — every OTHER centerpiece, plus all 9 moon-phase icons) is a base64
+PNG string embedded directly inside `kaizen.html` itself, assigned to a JS
+constant like `const TORII_IMG_B64 = "iVBORw0KG..."`. If you go looking for a
+`/assets` folder, `.png` files, or any external image reference, you will not
+find any — **that is correct and expected, not a missing file.** The single
+`kaizen.html` file is fully self-contained and complete as delivered; nothing
+else is needed to run it. Do not ask the user for missing image files — they
+don't exist as separate files and were never meant to.
+
 Kaizen is a single-file phone-first PWA (mood/habit tracker) with three tabs:
 **Tasks**, **Shrine**, and **Tally**. The entire app — HTML, CSS, and JS — lives in
 one file: `kaizen.html`. There is no build step, no bundler, no external JS files.
@@ -76,20 +87,24 @@ canvas-drawn versions were fully replaced):
 - `cat` → `catImg` (`CAT_IMG_B64`)
 - `guadalupe` → `guadalupeImg` (`GUADALUPE_IMG_B64`)
 
-Each image is loaded via `new Image(); img.src = "data:image/png;base64,..."`.
-Background removal on all uploaded source images was done offline (flood-fill
-from borders, gradient-tolerant where needed, then crop) — the *processing
-scripts* aren't part of the shipped file, only the final cleaned PNGs (as
-base64) are embedded. If the user uploads a new statue/character image to
-replace one of these, redo that same pipeline: flood-fill background removal
-(watch out for over-aggressive tolerance — it can leak into the artwork itself
-and leave the image looking translucent/broken; keep tolerance low and verify
-opacity % within the bounding box before finalizing), crop to content bbox,
-resize, base64-encode, and splice into the `const X_IMG_B64 = "..."` constant.
-**Careful when doing text-based find/replace across a large block that spans a
-declaration boundary** — it's easy to accidentally delete an adjacent `const`
-declaration if the replacement anchor isn't precise (this has happened before;
-always grep to confirm the exact boundary line before replacing).
+Each image is loaded via `new Image(); img.src = "data:image/png;base64," + X_IMG_B64;`
+— the entire PNG file's bytes are base64-encoded and sitting right there as a
+JS string constant in `kaizen.html`. There is no PNG file on disk, no assets
+folder, nothing to fetch. Background removal on the original uploaded source
+images (before they became these base64 constants) was done with a one-off
+Python/PIL script during earlier development — that processing script was
+never part of the project and doesn't need to exist for the app to work. If
+the user uploads a *new* image later to replace one of these, that same kind
+of pipeline needs to be redone (flood-fill background removal — watch out for
+too-loose a tolerance leaking into the artwork itself and leaving it looking
+translucent/broken; keep tolerance low and verify opacity % within the
+bounding box before finalizing — then crop to content bbox, resize, and
+base64-encode), with the result spliced into the matching
+`const X_IMG_B64 = "..."` constant in `kaizen.html`. **Be careful with
+find/replace across a large base64 block** — it's easy to accidentally delete
+an adjacent `const` declaration if the replacement anchor isn't precise (this
+has happened before; always grep to confirm the exact boundary line before
+replacing).
 
 **Centerpiece palette previews**: `iconUrlFor(type)` decides how to render each
 palette thumbnail. For image-based centerpieces it uses `imageThumbUrl(img)`
