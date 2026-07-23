@@ -61,7 +61,9 @@
   .streak-strip .num{ font-family: var(--font-display); font-size: 30px; font-weight: 800; line-height:1; }
   .streak-strip .lbl{ font-size: 11px; opacity: 0.9; margin-top:2px; text-transform:uppercase; letter-spacing:0.5px;}
   .week-dots{ display:flex; gap:6px; }
-  .week-dot{ width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .week-dot{ width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,0.25); display:flex; align-items:center; justify-content:center; font-size: 13px; position:relative; overflow:hidden; }
+  .week-dot-fill{ position:absolute; left:0; top:0; bottom:0; background: rgba(255,255,255,0.92); transition: width .2s ease; }
+  .week-dot-mark{ position:relative; color: var(--primary-dark); font-weight:800; }
 
   .card{ background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
   .card h2{ font-family: var(--font-display); font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--ink); }
@@ -417,11 +419,6 @@
   }
   function isTaskDone(id, dateKey){ return !!(state.taskLog[dateKey] && state.taskLog[dateKey][id]); }
 
-  function anyTaskDoneOn(dateKey){
-    const log = state.taskLog[dateKey];
-    if(!log) return false;
-    return Object.values(log).some(Boolean);
-  }
   function countActiveTasks(){
     const today = todayKey();
     return state.tasks.filter(taskAppliesToday).filter(t=> !isTaskDone(t.id, today)).length;
@@ -692,90 +689,28 @@
     reader.readAsText(file);
   });
 
-  // week-strip growth icon: a little sakura sapling that grows one stage for every day in the
-  // trailing 7 that had at least one task completed (doesn't need every task, just one), maxing
-  // out at a full bloom if the whole week was active
-  const GROWTH_COLORS = {
-    K:"#6b4a37", T:"#5c4632", L:"#7cbf7a", M:"#4f8f56", S:"#f6b8d0", P:"#e888ac", W:"#fff5f8"
-  };
-  const GROWTH_STAGE_GRIDS = [
-    [ // 0: bare soil
-      "............","............","............","............","............",
-      "............","............","............","............","............",
-      "..KKKKKKKK..","KKKKKKKKKKKK"
-    ],
-    [ // 1: tiny sprout
-      "............","............","............","............","............",
-      "............","............","............",".....L......","....LLL.....",
-      ".....T......","..KKKKKKKK.."
-    ],
-    [ // 2: seedling with two leaves
-      "............","............","............","............","............",
-      "............","............","....L.L.....","...LLLLL....",".....T......",
-      ".....T......","..KKKKKKKK.."
-    ],
-    [ // 3: small sapling
-      "............","............","............","............","............",
-      "....LLL.....","...LLLLL....","...MLLLM....",".....T......",".....T......",
-      ".....T......","..KKKKKKKK.."
-    ],
-    [ // 4: taller sapling, fuller green canopy
-      "............","............","...LLLLL....","..LLLLLLL...","..LMLLLML...",
-      "...LLLLL....","....TTT.....",".....T......",".....T......",".....T......",
-      "..KKKKKKKK..","KKKKKKKKKKKK"
-    ],
-    [ // 5: buds starting (green + a little pink)
-      "............","...LLLLL....","..LLSLLLL...","..LLLLSLL...","..LMLLLML...",
-      "...LLLLL....","....TTT.....",".....T......",".....T......",".....T......",
-      "..KKKKKKKK..","KKKKKKKKKKKK"
-    ],
-    [ // 6: mostly pink, some green
-      "............","...SSSSS....","..SSPSSSS...","..SLSSPSL...","..SSSLSSS...",
-      "...SSSSS....","....TTT.....",".....T......",".....T......",".....T......",
-      "..KKKKKKKK..","KKKKKKKKKKKK"
-    ],
-    [ // 7: full bloom sakura tree
-      "....S.......","..SSSSSS....",".SSSPSSPS...","SSSSWSSSSS..",".SPSSSSPSS..",
-      "..SSSSSSS...","....TTT.....",".....T......","....TTT.....",".....T......",
-      "..KKKKKKKK..","KKKKKKKKKKKK"
-    ]
-  ];
-  const GROWTH_ICON_CACHE = {};
-  function growthStageIconUrl(stage){
-    if(GROWTH_ICON_CACHE[stage]) return GROWTH_ICON_CACHE[stage];
-    const grid = GROWTH_STAGE_GRIDS[stage];
-    const cell = 3;
-    const off = document.createElement("canvas");
-    off.width = grid[0].length*cell; off.height = grid.length*cell;
-    const octx = off.getContext("2d");
-    octx.imageSmoothingEnabled = false;
-    grid.forEach((row,ry)=>{
-      for(let rx=0; rx<row.length; rx++){
-        const ch = row[rx];
-        if(ch===".") continue;
-        octx.fillStyle = GROWTH_COLORS[ch] || "#000";
-        octx.fillRect(rx*cell, ry*cell, cell, cell);
-      }
-    });
-    const url = off.toDataURL();
-    GROWTH_ICON_CACHE[stage] = url;
-    return url;
-  }
+  // week strip: each dot fills left-to-right by the fraction of today's applicable tasks that
+  // were done on that day, instead of only lighting up on a fully-complete day
   function renderWeekDots(){
     const wrap = document.getElementById("weekDots");
     wrap.innerHTML="";
-    let grown = 0;
+    const applicable = state.tasks.filter(taskAppliesToday);
     for(let i=6;i>=0;i--){
       const k = daysAgoKey(i);
-      if(anyTaskDoneOn(k)) grown++;
-      const stage = Math.min(grown, GROWTH_STAGE_GRIDS.length-1);
+      const doneCount = applicable.filter(t=> isTaskDone(t.id, k)).length;
+      const pct = applicable.length ? Math.round((doneCount/applicable.length)*100) : 0;
       const dot = document.createElement("div");
       dot.className="week-dot";
-      const img = document.createElement("img");
-      img.src = growthStageIconUrl(stage);
-      img.style.width="100%"; img.style.height="100%";
-      img.style.imageRendering="pixelated";
-      dot.appendChild(img);
+      const fill = document.createElement("div");
+      fill.className="week-dot-fill";
+      fill.style.width = pct+"%";
+      dot.appendChild(fill);
+      if(pct===100){
+        const mark = document.createElement("span");
+        mark.className="week-dot-mark";
+        mark.textContent = "✓";
+        dot.appendChild(mark);
+      }
       wrap.appendChild(dot);
     }
   }
