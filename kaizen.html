@@ -84,7 +84,7 @@
   .task-list{ display:flex; flex-direction:column; gap:8px; }
   .task-row{
     display:flex; align-items:center; gap:10px; background: var(--card-2); border: 1px solid var(--line);
-    border-radius: 12px; padding: 10px 12px;
+    border-radius: 12px; padding: 10px 12px 10px 8px;
   }
   .task-row.dragging{ opacity:0.5; }
   .task-row.completed{ background: transparent; border-style:dashed; opacity:0.6; }
@@ -97,8 +97,8 @@
   .task-row .tname{ flex:1; font-size:13px; }
   .task-row.completed .tname{ text-decoration: line-through; color: var(--ink-dim); }
   .task-row .trepeat{ font-size: 10px; color: var(--ink-dim); background:#fff; border:1px solid var(--line); border-radius:6px; padding:2px 6px; }
-  .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:14px; cursor:pointer; }
-  .task-row .del{ color: var(--ink-dim); background:none; border:none; font-size:15px; cursor:pointer; }
+  .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:20px; line-height:1; padding:2px; cursor:pointer; }
+  .task-row .del{ color: var(--ink-dim); background:none; border:none; font-size:21px; line-height:1; padding:2px; cursor:pointer; }
   .task-divider{ font-size:10px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:0.5px; margin: 12px 0 6px; }
 
   /* ---- FAB ---- */
@@ -152,7 +152,7 @@
   .palette-grid{ display:flex; flex-wrap:wrap; gap:8px; }
   .palette-item{
     width:52px; height:52px; border-radius:12px; background: var(--card-2); border:2px solid transparent;
-    display:flex; align-items:center; justify-content:center; font-size:24px; cursor:grab; touch-action:none;
+    display:flex; align-items:center; justify-content:center; font-size:24px; cursor:pointer; touch-action:manipulation;
   }
   .palette-item.selected{ border-color: var(--primary-dark); background: var(--primary-dim); }
   .palette-item:active{ transform:scale(0.94); }
@@ -284,7 +284,7 @@
     </div>
     <div class="card">
       <h2>Centerpiece</h2>
-      <div class="hint">Drag one onto the shrine to replace what stands in the gate.</div>
+      <div class="hint">Tap one to place it in the gate.</div>
       <div class="palette-grid" id="centerpieceGrid"></div>
     </div>
     <div class="card">
@@ -813,49 +813,13 @@
       img.style.imageRendering="pixelated";
       img.draggable=false;
       el.appendChild(img);
-      el.addEventListener("pointerdown",(ev)=> startCenterpieceDrag(ev, item));
-      grid.appendChild(el);
-    });
-  }
-  // guards against stray ghost icons / leaked listeners piling up if a previous drag never got
-  // a clean pointerup (e.g. the OS interrupted the touch with a system gesture)
-  let activeCenterpieceDrag = null;
-  function startCenterpieceDrag(ev, item){
-    ev.preventDefault();
-    if(activeCenterpieceDrag) activeCenterpieceDrag.cleanup();
-
-    const target = ev.currentTarget;
-    try{ target.setPointerCapture(ev.pointerId); }catch(e){}
-
-    const ghost = document.createElement("img");
-    ghost.src = iconUrlFor(item.type);
-    ghost.style.position="fixed"; ghost.style.width="40px"; ghost.style.height="40px";
-    ghost.style.imageRendering="pixelated"; ghost.style.pointerEvents="none";
-    ghost.style.zIndex=999; ghost.style.left=ev.clientX+"px"; ghost.style.top=ev.clientY+"px";
-    ghost.style.transform="translate(-50%,-50%)";
-    document.body.appendChild(ghost);
-
-    function move(e){ ghost.style.left=e.clientX+"px"; ghost.style.top=e.clientY+"px"; }
-    function drop(e){
-      const rect = document.querySelector(".shrine-wrap").getBoundingClientRect();
-      if(e.clientX>=rect.left && e.clientX<=rect.right && e.clientY>=rect.top && e.clientY<=rect.bottom){
+      el.addEventListener("click",()=>{
+        if(state.shrine.centerpiece===item.type) return;
         state.shrine.centerpiece = item.type;
         saveState(); renderCenterpiecePalette(); showToast(item.name+" placed");
-      }
-      cleanup();
-    }
-    function cleanup(){
-      target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", drop);
-      target.removeEventListener("pointercancel", cleanup);
-      try{ target.releasePointerCapture(ev.pointerId); }catch(e){}
-      ghost.remove();
-      activeCenterpieceDrag = null;
-    }
-    target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", drop);
-    target.addEventListener("pointercancel", cleanup);
-    activeCenterpieceDrag = { cleanup };
+      });
+      grid.appendChild(el);
+    });
   }
 
   /* ---- Prayers: each one is a folded shide-style paper hanging from the rope; tap to unfold and read ---- */
