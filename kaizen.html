@@ -52,12 +52,6 @@
   header.top .sub{ font-size: 12px; color: var(--ink-dim); margin-top:2px; }
   .header-icons{ display:flex; align-items:center; gap:8px; }
   .moon-icon{ width:26px; height:26px; image-rendering:pixelated; }
-  .icon-btn{
-    background: var(--card); border: 1px solid var(--line); color: var(--ink);
-    width: 38px; height:38px; border-radius: 12px;
-    display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer;
-  }
-  .icon-btn:active{ transform: scale(0.94); }
 
   .streak-strip{
     background: linear-gradient(135deg, var(--primary), var(--primary-dark));
@@ -67,8 +61,7 @@
   .streak-strip .num{ font-family: var(--font-display); font-size: 30px; font-weight: 800; line-height:1; }
   .streak-strip .lbl{ font-size: 11px; opacity: 0.9; margin-top:2px; text-transform:uppercase; letter-spacing:0.5px;}
   .week-dots{ display:flex; gap:6px; }
-  .week-dot{ width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,0.25); display:flex; align-items:center; justify-content:center; font-size: 13px; }
-  .week-dot.filled{ background: rgba(255,255,255,0.92); color: var(--primary-dark); font-weight:800; }
+  .week-dot{ width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; overflow:hidden; }
 
   .card{ background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
   .card h2{ font-family: var(--font-display); font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--ink); }
@@ -97,8 +90,8 @@
   .task-row .tname{ flex:1; font-size:13px; }
   .task-row.completed .tname{ text-decoration: line-through; color: var(--ink-dim); }
   .task-row .trepeat{ font-size: 10px; color: var(--ink-dim); background:#fff; border:1px solid var(--line); border-radius:6px; padding:2px 6px; }
-  .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:20px; line-height:1; padding:2px; cursor:pointer; }
-  .task-row .del{ color: var(--ink-dim); background:none; border:none; font-size:21px; line-height:1; padding:2px; cursor:pointer; }
+  .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:23px; line-height:1; padding:2px; cursor:pointer; }
+  .task-row .del{ color: var(--ink-dim); background:none; border:none; font-size:24px; line-height:1; padding:2px; cursor:pointer; }
   .task-divider{ font-size:10px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:0.5px; margin: 12px 0 6px; }
 
   /* ---- FAB ---- */
@@ -232,6 +225,13 @@
   .toast{ position: fixed; left:50%; bottom: 94px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 12px; font-weight:700; opacity:0; pointer-events:none; transition: opacity .25s ease, transform .25s ease; z-index: 70; }
   .toast.show{ opacity:1; transform: translateX(-50%) translateY(-6px); }
   .empty-note{ font-size: 12px; color: var(--ink-dim); text-align:center; padding: 18px 10px; }
+  .history-link{ text-align:center; font-size:12px; font-style:italic; color: var(--primary-dark); margin-top:12px; cursor:pointer; }
+  .history-link:active{ opacity:0.7; }
+  .history-list{ margin-top: 14px; max-height: 40vh; overflow-y:auto; }
+  .history-day{ padding:10px 0; border-bottom:1px solid var(--line); }
+  .history-day:last-child{ border-bottom:none; }
+  .history-date{ font-size:13px; font-weight:700; }
+  .history-tasks{ font-size:12px; color: var(--ink-dim); margin-top:2px; }
   ::-webkit-scrollbar{ width:6px; height:6px; }
   ::-webkit-scrollbar-thumb{ background: var(--line); border-radius: 4px; }
 </style>
@@ -246,7 +246,6 @@
     </div>
     <div class="header-icons">
       <img class="moon-icon" id="moonIcon" title="Moon phase" alt="Moon phase"/>
-      <div class="icon-btn" id="resetBtn" title="reset data">⟲</div>
     </div>
   </header>
 
@@ -269,6 +268,7 @@
       <h2>Today's tasks</h2>
       <div class="hint">Drag ⋮⋮ to reorder. Check one off and it moves to the bottom, faded. Everything resets automatically at midnight.</div>
       <div class="task-list" id="taskList"></div>
+      <div class="history-link" id="historyLink">View past history →</div>
     </div>
   </section>
 
@@ -339,6 +339,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="historyOverlay">
+  <div class="modal-sheet">
+    <h2>Past history</h2>
+    <div class="hint">Back up your data to a file — handy to restore from if you ever delete and re-add the home screen icon.</div>
+    <div class="save-row" style="justify-content:flex-start;">
+      <button class="btn secondary" id="exportDataBtn">Export data</button>
+      <button class="btn secondary" id="importDataBtn">Import data</button>
+      <input type="file" id="importFileInput" accept="application/json" style="display:none;">
+    </div>
+    <div class="history-list" id="historyList"></div>
+    <div class="save-row">
+      <button class="btn" id="closeHistoryBtn">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -401,11 +417,10 @@
   }
   function isTaskDone(id, dateKey){ return !!(state.taskLog[dateKey] && state.taskLog[dateKey][id]); }
 
-  function dayIsComplete(dateKey){
-    // used for streak: all tasks that currently apply must be checked for that day
-    const applicable = state.tasks.filter(taskAppliesToday);
-    if(!applicable.length) return false;
-    return applicable.every(t=> isTaskDone(t.id, dateKey));
+  function anyTaskDoneOn(dateKey){
+    const log = state.taskLog[dateKey];
+    if(!log) return false;
+    return Object.values(log).some(Boolean);
   }
   function countActiveTasks(){
     const today = todayKey();
@@ -607,15 +622,160 @@
     showToast(wasEditing ? "Task updated" : "Task added");
   });
 
+  /* ---- Past history + backup/restore ---- */
+  const historyOverlay = document.getElementById("historyOverlay");
+  function renderHistoryList(){
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+    const today = todayKey();
+    const days = Object.keys(state.taskLog).filter(k=>k!==today).sort().reverse();
+    const withDone = days
+      .map(k=>({ key:k, doneNames: Object.entries(state.taskLog[k])
+        .filter(([,done])=>done)
+        .map(([id])=> state.tasks.find(t=>t.id===id))
+        .filter(Boolean)
+        .map(t=>t.name)
+      }))
+      .filter(d=>d.doneNames.length);
+    if(!withDone.length){ list.innerHTML='<div class="empty-note">No past days logged yet.</div>'; return; }
+    withDone.forEach(d=>{
+      const row = document.createElement("div");
+      row.className="history-day";
+      const dateLabel = new Date(d.key+"T00:00:00").toLocaleDateString(undefined,{weekday:"short", month:"short", day:"numeric"});
+      row.innerHTML =
+        '<div class="history-date">'+escapeHtml(dateLabel)+'</div>'+
+        '<div class="history-tasks">'+escapeHtml(d.doneNames.join(", "))+'</div>';
+      list.appendChild(row);
+    });
+  }
+  document.getElementById("historyLink").addEventListener("click", ()=>{
+    renderHistoryList();
+    historyOverlay.classList.add("show");
+  });
+  document.getElementById("closeHistoryBtn").addEventListener("click", ()=> historyOverlay.classList.remove("show"));
+  historyOverlay.addEventListener("click",(ev)=>{ if(ev.target===historyOverlay) historyOverlay.classList.remove("show"); });
+
+  document.getElementById("exportDataBtn").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "kaizen-backup-"+todayKey()+".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Backup downloaded");
+  });
+  document.getElementById("importDataBtn").addEventListener("click", ()=>{
+    document.getElementById("importFileInput").click();
+  });
+  document.getElementById("importFileInput").addEventListener("change",(ev)=>{
+    const file = ev.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      ev.target.value = "";
+      let p;
+      try{ p = JSON.parse(reader.result); }
+      catch(e){ showToast("Couldn't read that file"); return; }
+      if(!confirm("This replaces your current tasks and history with the backup. Continue?")) return;
+      state.tasks = p.tasks || [];
+      state.taskLog = p.taskLog || {};
+      state.taskOrder = p.taskOrder || {};
+      state.shrine = p.shrine || state.shrine;
+      if(!state.shrine.prayers) state.shrine.prayers = [];
+      if(!state.shrine.centerpiece) state.shrine.centerpiece = "torii";
+      state.tally = p.tally || state.tally;
+      saveState();
+      renderAll();
+      renderHistoryList();
+      showToast("Backup restored");
+    };
+    reader.readAsText(file);
+  });
+
+  // week-strip growth icon: a little sakura sapling that grows one stage for every day in the
+  // trailing 7 that had at least one task completed (doesn't need every task, just one), maxing
+  // out at a full bloom if the whole week was active
+  const GROWTH_COLORS = {
+    K:"#6b4a37", T:"#5c4632", L:"#7cbf7a", M:"#4f8f56", S:"#f6b8d0", P:"#e888ac", W:"#fff5f8"
+  };
+  const GROWTH_STAGE_GRIDS = [
+    [ // 0: bare soil
+      "............","............","............","............","............",
+      "............","............","............","............","............",
+      "..KKKKKKKK..","KKKKKKKKKKKK"
+    ],
+    [ // 1: tiny sprout
+      "............","............","............","............","............",
+      "............","............","............",".....L......","....LLL.....",
+      ".....T......","..KKKKKKKK.."
+    ],
+    [ // 2: seedling with two leaves
+      "............","............","............","............","............",
+      "............","............","....L.L.....","...LLLLL....",".....T......",
+      ".....T......","..KKKKKKKK.."
+    ],
+    [ // 3: small sapling
+      "............","............","............","............","............",
+      "....LLL.....","...LLLLL....","...MLLLM....",".....T......",".....T......",
+      ".....T......","..KKKKKKKK.."
+    ],
+    [ // 4: taller sapling, fuller green canopy
+      "............","............","...LLLLL....","..LLLLLLL...","..LMLLLML...",
+      "...LLLLL....","....TTT.....",".....T......",".....T......",".....T......",
+      "..KKKKKKKK..","KKKKKKKKKKKK"
+    ],
+    [ // 5: buds starting (green + a little pink)
+      "............","...LLLLL....","..LLSLLLL...","..LLLLSLL...","..LMLLLML...",
+      "...LLLLL....","....TTT.....",".....T......",".....T......",".....T......",
+      "..KKKKKKKK..","KKKKKKKKKKKK"
+    ],
+    [ // 6: mostly pink, some green
+      "............","...SSSSS....","..SSPSSSS...","..SLSSPSL...","..SSSLSSS...",
+      "...SSSSS....","....TTT.....",".....T......",".....T......",".....T......",
+      "..KKKKKKKK..","KKKKKKKKKKKK"
+    ],
+    [ // 7: full bloom sakura tree
+      "....S.......","..SSSSSS....",".SSSPSSPS...","SSSSWSSSSS..",".SPSSSSPSS..",
+      "..SSSSSSS...","....TTT.....",".....T......","....TTT.....",".....T......",
+      "..KKKKKKKK..","KKKKKKKKKKKK"
+    ]
+  ];
+  const GROWTH_ICON_CACHE = {};
+  function growthStageIconUrl(stage){
+    if(GROWTH_ICON_CACHE[stage]) return GROWTH_ICON_CACHE[stage];
+    const grid = GROWTH_STAGE_GRIDS[stage];
+    const cell = 3;
+    const off = document.createElement("canvas");
+    off.width = grid[0].length*cell; off.height = grid.length*cell;
+    const octx = off.getContext("2d");
+    octx.imageSmoothingEnabled = false;
+    grid.forEach((row,ry)=>{
+      for(let rx=0; rx<row.length; rx++){
+        const ch = row[rx];
+        if(ch===".") continue;
+        octx.fillStyle = GROWTH_COLORS[ch] || "#000";
+        octx.fillRect(rx*cell, ry*cell, cell, cell);
+      }
+    });
+    const url = off.toDataURL();
+    GROWTH_ICON_CACHE[stage] = url;
+    return url;
+  }
   function renderWeekDots(){
     const wrap = document.getElementById("weekDots");
     wrap.innerHTML="";
+    let grown = 0;
     for(let i=6;i>=0;i--){
       const k = daysAgoKey(i);
-      const has = dayIsComplete(k);
+      if(anyTaskDoneOn(k)) grown++;
+      const stage = Math.min(grown, GROWTH_STAGE_GRIDS.length-1);
       const dot = document.createElement("div");
-      dot.className="week-dot"+(has?" filled":"");
-      dot.textContent = has ? "✓" : "";
+      dot.className="week-dot";
+      const img = document.createElement("img");
+      img.src = growthStageIconUrl(stage);
+      img.style.width="100%"; img.style.height="100%";
+      img.style.imageRendering="pixelated";
+      dot.appendChild(img);
       wrap.appendChild(dot);
     }
   }
@@ -1491,21 +1651,6 @@
     }
   }
 
-  let mainResetArmed = false;
-  let mainResetTimer = null;
-  document.getElementById("resetBtn").addEventListener("click", async ()=>{
-    if(!mainResetArmed){
-      mainResetArmed = true;
-      showToast("Tap ⟲ again to erase everything");
-      clearTimeout(mainResetTimer);
-      mainResetTimer = setTimeout(()=>{ mainResetArmed = false; }, 3000);
-      return;
-    }
-    mainResetArmed = false;
-    clearTimeout(mainResetTimer);
-    state.tasks=[]; state.taskLog={}; state.taskOrder={}; state.shrine={theme:"sakura", prayers:[], centerpiece:"torii"}; state.tally={count:0};
-    saveState(); renderAll(); showToast("Reset");
-  });
 
   /* ================= Moon phase — real pixel-art icons matched to the actual current phase ================= */
   function getMoonPhase(date){
