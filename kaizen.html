@@ -531,7 +531,10 @@
         placeholder.style.borderRadius="12px";
         row.parentNode.insertBefore(placeholder, row.nextSibling);
       });
-      handle.addEventListener("pointermove",(ev)=>{
+      // once row.setPointerCapture() fires (in pointerdown above), every subsequent event for
+      // that pointer is retargeted to `row` and bubbles from there — a listener on `handle`
+      // (row's child, not an ancestor) would never see it, so these listen on `row` itself
+      row.addEventListener("pointermove",(ev)=>{
         if(!dragEl) return;
         const dy = ev.clientY-startY;
         dragEl.style.transform = "translateY("+dy+"px)";
@@ -556,8 +559,8 @@
         saveState();
         dragEl=null;
       };
-      handle.addEventListener("pointerup", endDrag);
-      handle.addEventListener("pointercancel", endDrag);
+      row.addEventListener("pointerup", endDrag);
+      row.addEventListener("pointercancel", endDrag);
     });
   }
 
