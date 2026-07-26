@@ -276,7 +276,7 @@
       <h2>Today's tasks</h2>
       <div class="hint">Drag ⋮⋮ to reorder. Check one off and it moves to the bottom, faded. Everything resets automatically at midnight.</div>
       <div class="task-list" id="taskList"></div>
-      <div class="history-link" id="historyLink">View past history →</div>
+      <div class="history-link" id="historyLink">View archived history →</div>
     </div>
   </section>
 
@@ -349,7 +349,11 @@
 
 <div class="modal-overlay" id="historyOverlay">
   <div class="modal-sheet">
-    <h2>Past history</h2>
+    <h2>Archived history</h2>
+    <div class="task-divider" style="margin-top:0;">Archived tasks</div>
+    <div class="hint">Tap ✕ to bring a task back to today's list.</div>
+    <div class="history-list" id="archivedList"></div>
+    <div class="task-divider">Completed days</div>
     <div class="hint">Back up your data to a file — handy to restore from if you ever delete and re-add the home screen icon.</div>
     <div class="save-row" style="justify-content:flex-start;">
       <button class="btn secondary" id="exportDataBtn">Export data</button>
@@ -689,8 +693,31 @@
       list.appendChild(row);
     });
   }
+  function renderArchivedList(){
+    const list = document.getElementById("archivedList");
+    list.innerHTML = "";
+    const archived = state.tasks.filter(t=>t.archived);
+    if(!archived.length){ list.innerHTML = '<div class="empty-note">No archived tasks.</div>'; return; }
+    archived.forEach(t=>{
+      const row = document.createElement("div");
+      row.className = "task-row";
+      row.innerHTML =
+        '<span class="tname">'+escapeHtml(t.name)+'</span>'+
+        '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
+        '<button class="del" title="Return to list"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
+      row.querySelector(".del").addEventListener("click", ()=>{
+        t.archived = false;
+        saveState();
+        renderArchivedList();
+        renderTaskList();
+        document.getElementById("activeTasksNum").textContent = countActiveTasks();
+      });
+      list.appendChild(row);
+    });
+  }
   document.getElementById("historyLink").addEventListener("click", ()=>{
     renderHistoryList();
+    renderArchivedList();
     historyOverlay.classList.add("show");
   });
   document.getElementById("closeHistoryBtn").addEventListener("click", ()=> historyOverlay.classList.remove("show"));
