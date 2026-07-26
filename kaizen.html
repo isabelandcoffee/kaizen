@@ -68,6 +68,25 @@
 
   .card{ background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
   .card h2{ font-family: var(--font-display); font-size: 15px; font-weight: 700; margin: 0 0 10px; color: var(--ink); }
+
+  /* ---- Sakura-rain: a few pixel petals drift down behind the Tasks card content whenever a
+     task is checked off. z-index:-1 keeps them strictly behind the (opaque) task rows and text. */
+  #panel-tasks .card{ position:relative; z-index:0; overflow:hidden; }
+  .sakura-rain{ position:absolute; inset:0; z-index:-1; pointer-events:none; overflow:hidden; }
+  .sakura-petal{
+    position:absolute; top:0; width:4px; height:4px; background: var(--primary-dark);
+    box-shadow:
+      4px 0 0 var(--primary), -4px 0 0 var(--primary),
+      0 4px 0 var(--primary), 0 -4px 0 var(--primary),
+      4px 4px 0 var(--primary-dim), -4px 4px 0 var(--primary-dim),
+      4px -4px 0 var(--primary-dim), -4px -4px 0 var(--primary-dim);
+    animation: sakuraFall linear forwards;
+  }
+  @keyframes sakuraFall{
+    0%{ transform: translate(0,-16px) rotate(0deg); opacity:0; }
+    12%{ opacity:0.9; }
+    100%{ transform: translate(var(--drift,20px),220px) rotate(var(--spin,180deg)); opacity:0; }
+  }
   .hint{ font-size: 12px; color: var(--ink-dim); margin: -4px 0 12px; line-height:1.5; }
 
   .tabs{ display:flex; gap:6px; margin: 0 0 12px; background: var(--card); padding: 4px; border-radius: 14px; border: 1px solid var(--line); }
@@ -269,6 +288,7 @@
 
   <section class="panel active" id="panel-tasks">
     <div class="card">
+      <div class="sakura-rain" id="sakuraRain"></div>
       <h2>Today's tasks</h2>
       <div class="hint">Drag ⋮⋮ to reorder. Check one off and it moves to the bottom, faded. Everything resets automatically at midnight.</div>
       <div class="task-list" id="taskList"></div>
@@ -432,6 +452,26 @@
   /* ================= TASKS TAB ================= */
   const TASK_COMPLETE_MOVE_DELAY = 850; // let the checkmark register before the row slides to Completed
 
+  // a quick handful of pixel sakura petals drifting down the Tasks card — only on check-off
+  function spawnSakuraRain(){
+    const container = document.getElementById("sakuraRain");
+    if(!container) return;
+    const count = 14;
+    for(let i=0;i<count;i++){
+      const petal = document.createElement("div");
+      petal.className = "sakura-petal";
+      petal.style.left = (Math.random()*100)+"%";
+      petal.style.setProperty("--drift", (Math.random()*60-30).toFixed(0)+"px");
+      petal.style.setProperty("--spin", (Math.random()*360|0)+"deg");
+      const scale = (0.7+Math.random()*0.9).toFixed(2);
+      petal.style.transform = "scale("+scale+")";
+      petal.style.animationDuration = (1.3+Math.random()*1.1).toFixed(2)+"s";
+      petal.style.animationDelay = (Math.random()*0.5).toFixed(2)+"s";
+      petal.addEventListener("animationend", ()=> petal.remove());
+      container.appendChild(petal);
+    }
+  }
+
   function toggleTask(id, dateKey){
     if(!state.taskLog[dateKey]) state.taskLog[dateKey]={};
     const nowDone = !state.taskLog[dateKey][id];
@@ -448,6 +488,7 @@
       if(check){ check.classList.add("done"); check.textContent="✓"; }
       document.getElementById("activeTasksNum").textContent = countActiveTasks();
       renderWeekDots();
+      spawnSakuraRain();
       setTimeout(()=>{
         if(isTaskDone(id, today)) renderTaskList();
       }, TASK_COMPLETE_MOVE_DELAY);
