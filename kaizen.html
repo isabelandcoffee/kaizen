@@ -515,7 +515,7 @@
       '<span class="tname">'+escapeHtml(t.name)+'</span>'+
       '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
       '<button class="edit" data-id="'+t.id+'" title="Edit">✎</button>'+
-      '<button class="del" data-id="'+t.id+'" title="Archive"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
+      '<button class="del" data-id="'+t.id+'" title="'+(done?"Return to list":"Archive")+'"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
     row.querySelector(".task-check").addEventListener("click", ()=> toggleTask(t.id, today));
     row.querySelector(".edit").addEventListener("click",(ev)=>{
       ev.stopPropagation();
@@ -523,6 +523,11 @@
     });
     row.querySelector(".del").addEventListener("click",(ev)=>{
       ev.stopPropagation();
+      if(done){
+        // in Completed, X just un-checks it back to the active list above — no archiving
+        toggleTask(t.id, today);
+        return;
+      }
       // archive, don't delete: task stays in state.tasks/taskLog for history and week-dot math,
       // it just stops showing up in the active list from today onward
       t.archived = true;
