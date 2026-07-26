@@ -81,6 +81,7 @@
   .task-row{
     display:flex; align-items:center; gap:10px; background: var(--card-2); border: 1px solid var(--line);
     border-radius: 12px; padding: 10px 12px 10px 8px;
+    transition: opacity .5s ease, background-color .5s ease, border-color .5s ease;
   }
   .task-row.dragging{ opacity:0.5; }
   .task-row.completed{ background: transparent; border-style:dashed; opacity:0.6; }
@@ -88,9 +89,10 @@
   .task-check{
     width: 24px; height:24px; border-radius: 8px; border: 2px solid var(--primary-dark);
     display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; font-size: 14px; color: transparent;
+    transition: background-color .25s ease;
   }
   .task-check.done{ background: var(--primary-dark); color:#fff; }
-  .task-row .tname{ flex:1; font-size:13px; }
+  .task-row .tname{ flex:1; font-size:13px; transition: color .5s ease; }
   .task-row.completed .tname{ text-decoration: line-through; color: var(--ink-dim); }
   .task-row .trepeat{ font-size: 10px; color: var(--ink-dim); background:#fff; border:1px solid var(--line); border-radius:6px; padding:2px 6px; }
   .task-row .edit{ color: var(--ink-dim); background:none; border:none; font-size:23px; line-height:1; padding:2px; cursor:pointer; }
@@ -421,11 +423,14 @@
     if(Array.isArray(task.repeat)) return task.repeat.includes(new Date().getDay());
     return true;
   }
+  // archived tasks are hidden from the active list but stay in state.tasks (and count as
+  // permanently undone) so archiving can never inflate the week-dot fill — only checkmarking can
+  function taskVisibleToday(task){ return taskAppliesToday(task) && !task.archived; }
   function isTaskDone(id, dateKey){ return !!(state.taskLog[dateKey] && state.taskLog[dateKey][id]); }
 
   function countActiveTasks(){
     const today = todayKey();
-    return state.tasks.filter(taskAppliesToday).filter(t=> !isTaskDone(t.id, today)).length;
+    return state.tasks.filter(taskVisibleToday).filter(t=> !isTaskDone(t.id, today)).length;
   }
   // lifetime count of distinct days with at least one task completed — used to unlock rewards
   // like the sakura tree centerpiece, regardless of which specific tasks they were
@@ -434,18 +439,37 @@
   }
 
   /* ================= TASKS TAB ================= */
+  const TASK_COMPLETE_MOVE_DELAY = 850; // let the checkmark register before the row slides to Completed
+
   function toggleTask(id, dateKey){
     if(!state.taskLog[dateKey]) state.taskLog[dateKey]={};
-    state.taskLog[dateKey][id] = !state.taskLog[dateKey][id];
+    const nowDone = !state.taskLog[dateKey][id];
+    state.taskLog[dateKey][id] = nowDone;
     saveState();
-    renderTaskList();
-    document.getElementById("activeTasksNum").textContent = countActiveTasks();
-    renderWeekDots();
+
+    const today = todayKey();
+    const row = dateKey===today ? document.querySelector('.task-row[data-id="'+id+'"]') : null;
+
+    if(nowDone && row && !row.classList.contains("completed")){
+      // show the checked state in place first, then move it down after a beat
+      row.classList.add("completed");
+      const check = row.querySelector(".task-check");
+      if(check){ check.classList.add("done"); check.textContent="✓"; }
+      document.getElementById("activeTasksNum").textContent = countActiveTasks();
+      renderWeekDots();
+      setTimeout(()=>{
+        if(isTaskDone(id, today)) renderTaskList();
+      }, TASK_COMPLETE_MOVE_DELAY);
+    } else {
+      renderTaskList();
+      document.getElementById("activeTasksNum").textContent = countActiveTasks();
+      renderWeekDots();
+    }
   }
 
   function getTaskOrder(){
     const today = todayKey();
-    const applicable = state.tasks.filter(taskAppliesToday);
+    const applicable = state.tasks.filter(taskVisibleToday);
     const applicableIds = applicable.map(t=>t.id);
     let order = state.taskOrder[today];
     if(!order){ order = applicableIds.slice(); }
@@ -491,7 +515,7 @@
       '<span class="tname">'+escapeHtml(t.name)+'</span>'+
       '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
       '<button class="edit" data-id="'+t.id+'" title="Edit">✎</button>'+
-      '<button class="del" data-id="'+t.id+'"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
+      '<button class="del" data-id="'+t.id+'" title="Archive"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
     row.querySelector(".task-check").addEventListener("click", ()=> toggleTask(t.id, today));
     row.querySelector(".edit").addEventListener("click",(ev)=>{
       ev.stopPropagation();
@@ -499,9 +523,12 @@
     });
     row.querySelector(".del").addEventListener("click",(ev)=>{
       ev.stopPropagation();
-      state.tasks = state.tasks.filter(x=>x.id!==t.id);
+      // archive, don't delete: task stays in state.tasks/taskLog for history and week-dot math,
+      // it just stops showing up in the active list from today onward
+      t.archived = true;
       Object.keys(state.taskOrder).forEach(k=>{ state.taskOrder[k] = state.taskOrder[k].filter(id=>id!==t.id); });
       saveState(); renderTaskList();
+      document.getElementById("activeTasksNum").textContent = countActiveTasks();
     });
     return row;
   }
