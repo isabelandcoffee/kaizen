@@ -366,7 +366,7 @@
 <div class="modal-overlay" id="historyOverlay">
   <div class="modal-sheet">
     <h2>Archived history</h2>
-    <div class="hint">Tap ✕ to bring a task back to today's list.</div>
+    <div class="hint">These reset back to the active list on their own at midnight — tap ✕ to bring one back sooner.</div>
     <div class="history-list" id="archivedList"></div>
     <div class="save-row">
       <button class="btn" id="closeHistoryBtn">Close</button>
@@ -434,9 +434,10 @@
     if(Array.isArray(task.repeat)) return task.repeat.includes(new Date().getDay());
     return true;
   }
-  // archived tasks are hidden from the active list but stay in state.tasks (and count as
-  // permanently undone) so archiving can never inflate the week-dot fill — only checkmarking can
-  function taskVisibleToday(task){ return taskAppliesToday(task) && !task.archived; }
+  // archiving hides a task for the day it was archived on only — archivedOn is a date key, so
+  // once that day is no longer today the task is visible again automatically (resets at midnight).
+  // it still counts as undone in the week-dot math for that day, so archiving never inflates the fill.
+  function taskVisibleToday(task){ return taskAppliesToday(task) && task.archivedOn!==todayKey(); }
   function isTaskDone(id, dateKey){ return !!(state.taskLog[dateKey] && state.taskLog[dateKey][id]); }
 
   function countActiveTasks(){
@@ -561,8 +562,8 @@
         return;
       }
       // archive, don't delete: task stays in state.tasks/taskLog for history and week-dot math,
-      // it just stops showing up in the active list from today onward
-      t.archived = true;
+      // it just stops showing up in today's active list — resets on its own at midnight
+      t.archivedOn = today;
       Object.keys(state.taskOrder).forEach(k=>{ state.taskOrder[k] = state.taskOrder[k].filter(id=>id!==t.id); });
       saveState(); renderTaskList();
       document.getElementById("activeTasksNum").textContent = countActiveTasks();
@@ -700,7 +701,8 @@
   function renderArchivedList(){
     const list = document.getElementById("archivedList");
     list.innerHTML = "";
-    const archived = state.tasks.filter(t=>t.archived);
+    const today = todayKey();
+    const archived = state.tasks.filter(t=>t.archivedOn===today);
     if(!archived.length){ list.innerHTML = '<div class="empty-note">No archived tasks.</div>'; return; }
     archived.forEach(t=>{
       const row = document.createElement("div");
@@ -710,7 +712,7 @@
         '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
         '<button class="del" title="Return to list"><svg viewBox="0 0 24 24" width="19" height="19"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></button>';
       row.querySelector(".del").addEventListener("click", ()=>{
-        t.archived = false;
+        delete t.archivedOn;
         saveState();
         renderArchivedList();
         renderTaskList();
