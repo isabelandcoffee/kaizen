@@ -381,12 +381,31 @@
   "use strict";
 
   const STORE_KEY = "kaizen:data:v5";
+  // one-time recovery seed: reconstructed from a screenshot of the real task list and history
+  // after local storage was unexpectedly lost. Safe to leave in place — loadState() only falls
+  // back to this default when there's nothing in local storage to load, so it's a no-op once
+  // real data exists again.
   let state = {
     tasks: [
-      {id:"t1", name:"Drink water", repeat:"daily"},
-      {id:"t2", name:"5 min stretch", repeat:"daily"}
+      {id:"t1", name:"Meds", repeat:"daily"},
+      {id:"t2", name:"Breakfast @7:30 am", repeat:"daily"},
+      {id:"t3", name:"Lunch @1pm", repeat:"daily"},
+      {id:"t4", name:"Work", repeat:"daily"},
+      {id:"t5", name:"Yoga @9am", repeat:"daily"},
+      {id:"t6", name:"Sweep office", repeat:"daily"},
+      {id:"t7", name:"Walk/nature", repeat:"daily"},
+      {id:"t8", name:"Study Japanese", repeat:"daily"},
+      {id:"t9", name:"Clean", repeat:"daily"},
+      {id:"t10", name:"Exercise", repeat:"daily"},
+      {id:"t11", name:"Change dog water", repeat:"daily"},
+      {id:"t12", name:"Morning skincare", repeat:"daily"},
+      {id:"t13", name:"Start washer", repeat:"daily"}
     ],
-    taskLog: {}, // "YYYY-MM-DD" -> {taskId: true}
+    taskLog: {
+      "2026-07-25": {t1:true, t2:true, t13:true, t3:true, t4:true, t5:true, t10:true, t6:true, t12:true, t7:true},
+      "2026-07-24": {t1:true, t2:true, t5:true, t6:true, t12:true, t13:true, t3:true, t4:true},
+      "2026-07-23": {t1:true, t2:true, t12:true, t13:true, t4:true, t6:true, t3:true, t5:true, t7:true, t8:true}
+    },
     taskOrder: {}, // "YYYY-MM-DD" -> [taskId,...] manual order for that day's incomplete tasks
     shrine: { theme:"sakura", prayers: [], centerpiece: "torii" },
     tally: { count: 0 }
