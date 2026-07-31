@@ -751,10 +751,12 @@
   // saves a small JSON snapshot for the Scriptable home-screen widget to read — save it into
   // the "Scriptable" folder in iCloud Drive when the share sheet opens, overwriting the old one
   document.getElementById("updateWidgetLink").addEventListener("click", ()=>{
+    const today = todayKey();
     const data = {
-      date: todayKey(),
+      date: today,
       tasksLeft: countActiveTasks(),
       tasksTotal: state.tasks.filter(taskVisibleToday).length,
+      remaining: getTaskOrder().filter(t=>!isTaskDone(t.id, today)).map(t=>t.name),
       weekDots: computeWeekDotPercents(),
       updatedAt: new Date().toISOString()
     };

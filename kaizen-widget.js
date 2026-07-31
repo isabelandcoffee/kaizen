@@ -15,13 +15,19 @@
 // 4. Long-press your Home Screen (or swipe right to the Today View / "far left"
 //    screen) → the + in the corner → search "Scriptable" → pick a size → add it →
 //    tap the new widget → set "Script" to the one you just made.
+// 5. To make tapping the widget open Kaizen: fill in KAIZEN_URL below with the
+//    exact address you open Kaizen from, then in the widget's edit screen set
+//    "When Interacting" to "Open URL" (this replaces tap-to-refresh with tap-to-open
+//    — a widget can only do one or the other, not both).
 //
 // Nothing here talks to the network — it only reads a file already on your device.
 
 const FILE_NAME = "kaizen-widget-data.json";
+const KAIZEN_URL = ""; // fill in with the URL you open Kaizen from, e.g. "https://example.com/kaizen.html"
 
 const COLORS = {
   bg: new Color("#fdf6f8"),
+  card: new Color("#ffffff"),
   ink: new Color("#332b30"),
   inkDim: new Color("#9c8d95"),
   primary: new Color("#f2a6c6"),
@@ -55,16 +61,87 @@ function timeAgoLabel(iso){
   return Math.round(hours / 24) + "d ago";
 }
 
+// left column: the count, the streak dots, the "updated" timestamp
+function buildSummaryColumn(container, data){
+  const title = container.addText("Kaizen");
+  title.font = Font.boldSystemFont(13);
+  title.textColor = COLORS.primaryDark;
+
+  container.addSpacer(6);
+
+  const big = container.addText(String(data.tasksLeft));
+  big.font = Font.boldSystemFont(30);
+  big.textColor = COLORS.ink;
+
+  const label = container.addText(data.tasksLeft === 1 ? "task left" : "tasks left");
+  label.font = Font.systemFont(11);
+  label.textColor = COLORS.inkDim;
+
+  container.addSpacer(10);
+
+  // matches the app's own strip: today leftmost, oldest (6 days ago) rightmost
+  const dotsRow = container.addStack();
+  dotsRow.spacing = 4;
+  (data.weekDots || []).forEach(pct=>{
+    const dot = dotsRow.addStack();
+    dot.size = new Size(14, 14);
+    dot.cornerRadius = 4;
+    dot.backgroundColor = pct > 0 ? COLORS.primary : COLORS.primaryFaint;
+  });
+
+  container.addSpacer(8);
+  const updated = container.addText("Updated " + timeAgoLabel(data.updatedAt));
+  updated.font = Font.systemFont(9);
+  updated.textColor = COLORS.inkDim;
+}
+
+// right column: as many of today's remaining tasks as comfortably fit
+function buildTaskPreviewColumn(container, data, maxRows){
+  const remaining = data.remaining || [];
+
+  if(!remaining.length){
+    const done = container.addText("All done today ✓");
+    done.font = Font.systemFont(13);
+    done.textColor = COLORS.primaryDark;
+    return;
+  }
+
+  const shown = remaining.slice(0, maxRows);
+  shown.forEach((name, i)=>{
+    const row = container.addStack();
+    row.spacing = 6;
+    row.centerAlignContent();
+
+    const box = row.addStack();
+    box.size = new Size(11, 11);
+    box.cornerRadius = 3;
+    box.backgroundColor = COLORS.card;
+    box.borderWidth = 1.5;
+    box.borderColor = COLORS.primaryDark;
+
+    const label = row.addText(name);
+    label.font = Font.systemFont(12);
+    label.textColor = COLORS.ink;
+    label.lineLimit = 1;
+
+    if(i < shown.length - 1) container.addSpacer(5);
+  });
+
+  const remainder = remaining.length - shown.length;
+  if(remainder > 0){
+    container.addSpacer(4);
+    const more = container.addText("+" + remainder + " more");
+    more.font = Font.systemFont(10);
+    more.textColor = COLORS.inkDim;
+  }
+}
+
 function buildWidget(data){
   const widget = new ListWidget();
   widget.backgroundColor = COLORS.bg;
   widget.setPadding(14, 14, 14, 14);
 
-  const title = widget.addText("Kaizen");
-  title.font = Font.boldSystemFont(13);
-  title.textColor = COLORS.primaryDark;
-
-  widget.addSpacer(6);
+  if(KAIZEN_URL) widget.url = KAIZEN_URL;
 
   if(!data){
     const msg = widget.addText("Open Kaizen, tap “Update widget file”, save it to the Scriptable folder.");
@@ -73,30 +150,24 @@ function buildWidget(data){
     return widget;
   }
 
-  const big = widget.addText(String(data.tasksLeft));
-  big.font = Font.boldSystemFont(30);
-  big.textColor = COLORS.ink;
+  const family = config.widgetFamily || "small";
 
-  const label = widget.addText(data.tasksLeft === 1 ? "task left" : "tasks left");
-  label.font = Font.systemFont(11);
-  label.textColor = COLORS.inkDim;
+  if(family === "small"){
+    buildSummaryColumn(widget, data);
+  } else {
+    const row = widget.addStack();
+    row.layoutHorizontally();
+    row.spacing = 18;
 
-  widget.addSpacer(10);
+    const left = row.addStack();
+    left.layoutVertically();
+    left.size = new Size(110, 0); // fixed width, height grows to fit content
+    buildSummaryColumn(left, data);
 
-  // matches the app's own strip: today leftmost, oldest (6 days ago) rightmost
-  const dotsRow = widget.addStack();
-  dotsRow.spacing = 4;
-  (data.weekDots || []).forEach(pct=>{
-    const dot = dotsRow.addStack();
-    dot.size = new Size(16, 16);
-    dot.cornerRadius = 5;
-    dot.backgroundColor = pct > 0 ? COLORS.primary : COLORS.primaryFaint;
-  });
-
-  widget.addSpacer(8);
-  const updated = widget.addText("Updated " + timeAgoLabel(data.updatedAt));
-  updated.font = Font.systemFont(9);
-  updated.textColor = COLORS.inkDim;
+    const right = row.addStack();
+    right.layoutVertically();
+    buildTaskPreviewColumn(right, data, family === "large" ? 9 : 4);
+  }
 
   return widget;
 }
@@ -106,6 +177,10 @@ async function run(){
   const widget = buildWidget(data);
   if(config.runsInWidget){
     Script.setWidget(widget);
+  } else if(config.widgetFamily === "large"){
+    await widget.presentLarge();
+  } else if(config.widgetFamily === "medium"){
+    await widget.presentMedium();
   } else {
     await widget.presentSmall();
   }
