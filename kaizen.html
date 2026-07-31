@@ -293,6 +293,7 @@
       <div class="hint">Drag ⋮⋮ to reorder. Check one off and it moves to the bottom, faded. Everything resets automatically at midnight.</div>
       <div class="task-list" id="taskList"></div>
       <div class="history-link" id="historyLink">View archived history →</div>
+      <div class="history-link" id="updateWidgetLink">Update widget file →</div>
     </div>
   </section>
 
@@ -747,16 +748,41 @@
   document.getElementById("closeHistoryBtn").addEventListener("click", ()=> historyOverlay.classList.remove("show"));
   historyOverlay.addEventListener("click",(ev)=>{ if(ev.target===historyOverlay) historyOverlay.classList.remove("show"); });
 
+  // saves a small JSON snapshot for the Scriptable home-screen widget to read — save it into
+  // the "Scriptable" folder in iCloud Drive when the share sheet opens, overwriting the old one
+  document.getElementById("updateWidgetLink").addEventListener("click", ()=>{
+    const data = {
+      date: todayKey(),
+      tasksLeft: countActiveTasks(),
+      tasksTotal: state.tasks.filter(taskVisibleToday).length,
+      weekDots: computeWeekDotPercents(),
+      updatedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "kaizen-widget-data.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Save it to the Scriptable folder in Files");
+  });
+
   // week strip: each dot fills left-to-right by the fraction of today's applicable tasks that
   // were done on that day, instead of only lighting up on a fully-complete day
-  function renderWeekDots(){
-    const wrap = document.getElementById("weekDots");
-    wrap.innerHTML="";
+  function computeWeekDotPercents(){
     const applicable = state.tasks.filter(taskAppliesToday);
+    const pcts = [];
     for(let i=0;i<=6;i++){
       const k = daysAgoKey(i);
       const doneCount = applicable.filter(t=> isTaskDone(t.id, k)).length;
-      const pct = applicable.length ? Math.round((doneCount/applicable.length)*100) : 0;
+      pcts.push(applicable.length ? Math.round((doneCount/applicable.length)*100) : 0);
+    }
+    return pcts;
+  }
+  function renderWeekDots(){
+    const wrap = document.getElementById("weekDots");
+    wrap.innerHTML="";
+    computeWeekDotPercents().forEach(pct=>{
       const dot = document.createElement("div");
       dot.className="week-dot";
       const fill = document.createElement("div");
@@ -770,7 +796,7 @@
         dot.appendChild(mark);
       }
       wrap.appendChild(dot);
-    }
+    });
   }
 
   /* ================= TABS ================= */
