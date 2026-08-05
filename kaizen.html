@@ -151,6 +151,7 @@
   .save-row{ display:flex; justify-content:flex-end; margin-top: 14px; gap:8px; }
   .btn{ background: var(--primary-dark); color: #fff; border:none; border-radius: 10px; padding: 10px 16px; font-size: 13px; font-weight: 700; cursor:pointer; font-family: var(--font-body); }
   .btn.secondary{ background: var(--card-2); color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger{ background:#e5484d; color:#fff; width:100%; display:flex; align-items:center; justify-content:center; gap:6px; margin-top:14px; }
   .btn:active{ transform: scale(0.96); }
 
   /* ---- Shrine ---- */
@@ -357,6 +358,10 @@
       <div class="rt-btn" data-mode="custom">Custom days</div>
     </div>
     <div class="weekday-picker" id="weekdayPicker" style="display:none;"></div>
+    <button class="btn danger" id="deleteTaskBtn" style="display:none;">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3m-8 0 1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Delete task
+    </button>
     <div class="save-row">
       <button class="btn secondary" id="cancelTaskBtn">Cancel</button>
       <button class="btn" id="addTaskBtn">Add task</button>
@@ -663,6 +668,7 @@
     document.querySelectorAll("#repeatToggle .rt-btn").forEach(b=>b.classList.toggle("on", b.dataset.mode===newTaskRepeatMode));
     document.getElementById("weekdayPicker").style.display = newTaskRepeatMode==="custom" ? "flex":"none";
     document.querySelectorAll("#weekdayPicker .wd-btn").forEach((b,idx)=> b.classList.toggle("on", newTaskWeekdays.has(idx)));
+    document.getElementById("deleteTaskBtn").style.display = task ? "flex" : "none";
     overlay.classList.add("show");
   }
   document.getElementById("fabAddTask").addEventListener("click", ()=>{ openTaskModal(null); });
@@ -714,6 +720,22 @@
     renderWeekDots();
     closeTaskModal();
     showToast(wasEditing ? "Task updated" : "Task added");
+  });
+
+  document.getElementById("deleteTaskBtn").addEventListener("click", ()=>{
+    if(!editingTaskId) return;
+    const task = state.tasks.find(x=>x.id===editingTaskId);
+    if(!task) return;
+    if(!confirm('Permanently delete "'+task.name+'"? This removes it and its recurring schedule for good — it can\'t be undone.')) return;
+    const deletedId = editingTaskId;
+    state.tasks = state.tasks.filter(x=>x.id!==deletedId);
+    Object.keys(state.taskOrder).forEach(k=>{ state.taskOrder[k] = state.taskOrder[k].filter(id=>id!==deletedId); });
+    saveState();
+    renderTaskList();
+    document.getElementById("activeTasksNum").textContent = countActiveTasks();
+    renderWeekDots();
+    closeTaskModal();
+    showToast("Task deleted");
   });
 
   /* ---- Archived tasks ---- */
