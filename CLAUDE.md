@@ -33,13 +33,15 @@ CSS layout intentionally locks `html`/`body` to `100vh`/`100svh`/`100dvh` with
 that `position: fixed` elements (like the floating action button) stay pinned to
 the true viewport instead of scrolling away.
 
-## State schema (persisted via `window.storage`, key `kaizen:data:v5`)
+## State schema (persisted via real `localStorage`, key `kaizen:data:v5`)
 
 ```js
 state = {
-  tasks: [{id, name, repeat: "daily" | [weekdayInts]}],
+  tasks: [{id, name, repeat: "daily" | [weekdayInts], archivedOn?: "YYYY-MM-DD"}],
+  // archivedOn: hides the task from today's list while it equals today's date key;
+  // once the day rolls over it stops matching and the task reappears on its own
   taskLog: { "YYYY-MM-DD": {taskId: true} },       // resets naturally each day
-  taskOrder: { "YYYY-MM-DD": [taskId, ...] },
+  taskOrder: [taskId, ...],                        // manual drag order, persists across days
   shrine: {
     theme: "summer"|"sakura"|"autumn"|"winter"|"dawn"|"rain"|"snowy"|"starry",
     prayers: [{id: "p"+Date.now(), text, date: ISOString}],

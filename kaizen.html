@@ -412,7 +412,7 @@
       "2026-07-24": {t1:true, t2:true, t5:true, t6:true, t12:true, t13:true, t3:true, t4:true},
       "2026-07-23": {t1:true, t2:true, t12:true, t13:true, t4:true, t6:true, t3:true, t5:true, t7:true, t8:true}
     },
-    taskOrder: {}, // "YYYY-MM-DD" -> [taskId,...] manual order for that day's incomplete tasks
+    taskOrder: [], // [taskId,...] manual order for incomplete tasks — persists across midnight
     shrine: { theme:"sakura", prayers: [], centerpiece: "torii" },
     tally: { count: 0 }
   };
@@ -424,7 +424,16 @@
         const p = JSON.parse(raw);
         state.tasks = p.tasks || state.tasks;
         state.taskLog = p.taskLog || {};
-        state.taskOrder = p.taskOrder || {};
+        if(Array.isArray(p.taskOrder)){
+          state.taskOrder = p.taskOrder;
+        } else if(p.taskOrder && typeof p.taskOrder==="object"){
+          // migrate from the old per-day shape: carry forward the most recent day's order
+          const days = Object.keys(p.taskOrder).sort();
+          const latestDay = days[days.length-1];
+          state.taskOrder = latestDay ? (p.taskOrder[latestDay] || []) : [];
+        } else {
+          state.taskOrder = [];
+        }
         state.shrine = p.shrine || state.shrine;
         if(!state.shrine.prayers) state.shrine.prayers = [];
         if(!state.shrine.centerpiece) state.shrine.centerpiece = "torii";
@@ -526,17 +535,13 @@
   }
 
   function getTaskOrder(){
-    const today = todayKey();
     const applicable = state.tasks.filter(taskVisibleToday);
     const applicableIds = applicable.map(t=>t.id);
-    let order = state.taskOrder[today];
-    if(!order){ order = applicableIds.slice(); }
-    else {
-      // include any new tasks not yet in stored order, drop ones no longer applicable
-      order = order.filter(id=>applicableIds.includes(id));
-      applicableIds.forEach(id=>{ if(!order.includes(id)) order.push(id); });
-    }
-    state.taskOrder[today] = order;
+    // include any new tasks not yet in the stored order, drop ones no longer applicable —
+    // the order itself persists across days rather than resetting at midnight
+    let order = (state.taskOrder || []).filter(id=>applicableIds.includes(id));
+    applicableIds.forEach(id=>{ if(!order.includes(id)) order.push(id); });
+    state.taskOrder = order;
     return order.map(id=> state.tasks.find(t=>t.id===id)).filter(Boolean);
   }
 
@@ -589,7 +594,7 @@
       // archive, don't delete: task stays in state.tasks/taskLog for history and week-dot math,
       // it just stops showing up in today's active list — resets on its own at midnight
       t.archivedOn = today;
-      Object.keys(state.taskOrder).forEach(k=>{ state.taskOrder[k] = state.taskOrder[k].filter(id=>id!==t.id); });
+      state.taskOrder = state.taskOrder.filter(id=>id!==t.id);
       saveState(); renderTaskList();
       document.getElementById("activeTasksNum").textContent = countActiveTasks();
     });
@@ -644,8 +649,8 @@
         placeholder.remove(); placeholder=null;
         const today = todayKey();
         const newIncompleteOrder = Array.from(list.querySelectorAll(".task-row:not(.completed)")).map(r=>r.dataset.id);
-        const completeIds = state.taskOrder[today].filter(id=> isTaskDone(id, today));
-        state.taskOrder[today] = newIncompleteOrder.concat(completeIds);
+        const completeIds = state.taskOrder.filter(id=> isTaskDone(id, today));
+        state.taskOrder = newIncompleteOrder.concat(completeIds);
         saveState();
         dragEl=null;
       };
@@ -729,7 +734,7 @@
     if(!confirm('Permanently delete "'+task.name+'"? This removes it and its recurring schedule for good — it can\'t be undone.')) return;
     const deletedId = editingTaskId;
     state.tasks = state.tasks.filter(x=>x.id!==deletedId);
-    Object.keys(state.taskOrder).forEach(k=>{ state.taskOrder[k] = state.taskOrder[k].filter(id=>id!==deletedId); });
+    state.taskOrder = state.taskOrder.filter(id=>id!==deletedId);
     saveState();
     renderTaskList();
     document.getElementById("activeTasksNum").textContent = countActiveTasks();
