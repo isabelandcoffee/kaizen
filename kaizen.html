@@ -609,15 +609,66 @@
 
   // drag-to-reorder only applies among incomplete rows (rows without .completed)
   function enableTaskDrag(list){
-    let dragEl=null, startY=0, placeholder=null;
+    let dragEl=null, startY=0, placeholder=null, lastPointerY=0, rafPending=false;
+
+    // pointermove/up/cancel are attached to `document` only while a drag is active, instead of
+    // relying on setPointerCapture to retarget events back to the row — capture could throw or
+    // silently fail to retarget, leaving dragEl/placeholder in a half-started state that broke
+    // every drag afterward (that's what the "weird, laggy" behavior traced back to)
+    function onPointerMove(ev){
+      if(!dragEl) return;
+      lastPointerY = ev.clientY;
+      dragEl.style.transform = "translateY("+(lastPointerY-startY)+"px)";
+      if(rafPending) return;
+      rafPending = true;
+      // coalesce into one reorder-scan per frame instead of one per raw pointermove event —
+      // rapid pointermove firing was previously re-scanning + re-inserting on every event
+      requestAnimationFrame(()=>{
+        rafPending = false;
+        if(!dragEl || !placeholder) return;
+        const rows = Array.from(list.querySelectorAll(".task-row:not(.completed)")).filter(r=>r!==dragEl);
+        // read every row's midpoint first with no DOM writes in between (avoids the layout
+        // thrashing that came from moving the placeholder once per row inside this loop),
+        // then make at most one insertBefore call to land it in the right spot
+        let target = null;
+        for(const r of rows){
+          const rect = r.getBoundingClientRect();
+          const mid = rect.top + rect.height/2;
+          if(lastPointerY < mid){ target = r; break; }
+        }
+        if(target){
+          if(target.previousElementSibling !== placeholder) list.insertBefore(placeholder, target);
+        } else if(rows.length){
+          const last = rows[rows.length-1];
+          if(last.nextElementSibling !== placeholder) list.insertBefore(placeholder, last.nextElementSibling);
+        }
+      });
+    }
+
+    function endDrag(){
+      if(!dragEl) return;
+      dragEl.style.transform=""; dragEl.style.zIndex=""; dragEl.style.position="";
+      dragEl.classList.remove("dragging");
+      if(placeholder){ list.insertBefore(dragEl, placeholder); placeholder.remove(); }
+      placeholder=null;
+      const today = todayKey();
+      const newIncompleteOrder = Array.from(list.querySelectorAll(".task-row:not(.completed)")).map(r=>r.dataset.id);
+      const completeIds = state.taskOrder.filter(id=> isTaskDone(id, today));
+      state.taskOrder = newIncompleteOrder.concat(completeIds);
+      saveState();
+      dragEl=null;
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", endDrag);
+      document.removeEventListener("pointercancel", endDrag);
+    }
+
     list.querySelectorAll(".task-row:not(.completed)").forEach(row=>{
       const handle = row.querySelector(".drag-handle");
       if(!handle) return;
       handle.addEventListener("pointerdown",(ev)=>{
         ev.preventDefault();
-        dragEl=row; startY=ev.clientY;
+        dragEl=row; startY=ev.clientY; lastPointerY=ev.clientY;
         row.classList.add("dragging");
-        row.setPointerCapture(ev.pointerId);
         const rect = row.getBoundingClientRect();
         row.style.position="relative"; row.style.zIndex=10;
         placeholder=document.createElement("div");
@@ -625,37 +676,10 @@
         placeholder.style.border="1px dashed var(--line)";
         placeholder.style.borderRadius="12px";
         row.parentNode.insertBefore(placeholder, row.nextSibling);
+        document.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerup", endDrag);
+        document.addEventListener("pointercancel", endDrag);
       });
-      // once row.setPointerCapture() fires (in pointerdown above), every subsequent event for
-      // that pointer is retargeted to `row` and bubbles from there — a listener on `handle`
-      // (row's child, not an ancestor) would never see it, so these listen on `row` itself
-      row.addEventListener("pointermove",(ev)=>{
-        if(!dragEl) return;
-        const dy = ev.clientY-startY;
-        dragEl.style.transform = "translateY("+dy+"px)";
-        const rows = Array.from(list.querySelectorAll(".task-row:not(.completed)")).filter(r=>r!==dragEl);
-        for(const r of rows){
-          const rect=r.getBoundingClientRect();
-          const mid=rect.top+rect.height/2;
-          if(ev.clientY<mid && r.previousElementSibling!==placeholder){ list.insertBefore(placeholder,r); break; }
-          else if(ev.clientY>=mid && r.nextElementSibling!==placeholder){ list.insertBefore(placeholder, r.nextElementSibling); }
-        }
-      });
-      const endDrag=()=>{
-        if(!dragEl) return;
-        dragEl.style.transform=""; dragEl.style.zIndex="";
-        dragEl.classList.remove("dragging");
-        list.insertBefore(dragEl, placeholder);
-        placeholder.remove(); placeholder=null;
-        const today = todayKey();
-        const newIncompleteOrder = Array.from(list.querySelectorAll(".task-row:not(.completed)")).map(r=>r.dataset.id);
-        const completeIds = state.taskOrder.filter(id=> isTaskDone(id, today));
-        state.taskOrder = newIncompleteOrder.concat(completeIds);
-        saveState();
-        dragEl=null;
-      };
-      row.addEventListener("pointerup", endDrag);
-      row.addEventListener("pointercancel", endDrag);
     });
   }
 
