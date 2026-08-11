@@ -562,6 +562,31 @@
     }
   }
 
+  function isWeekendsPattern(repeat){
+    if(!Array.isArray(repeat)) return false;
+    const sorted = repeat.slice().sort((a,b)=>a-b);
+    return sorted.length===2 && sorted[0]===0 && sorted[1]===6;
+  }
+
+  // standing display rule: an occasional/custom-scheduled task (not daily, not a Sat+Sun
+  // weekend pattern) never shows above the task named "Read" — applied fresh every render,
+  // not baked into the stored drag order, so it keeps holding even as things change
+  function applyReadAnchor(order){
+    const readTask = state.tasks.find(t=>t.name==="Read");
+    if(!readTask) return order;
+    const readIdx = order.indexOf(readTask.id);
+    if(readIdx===-1) return order;
+    const staying=[], floating=[];
+    for(let i=0;i<readIdx;i++){
+      const id = order[i];
+      const t = state.tasks.find(x=>x.id===id);
+      const isFloating = t && t.repeat!=="daily" && !isWeekendsPattern(t.repeat);
+      (isFloating ? floating : staying).push(id);
+    }
+    const rest = order.slice(readIdx);
+    return staying.concat([readTask.id], floating, rest.slice(1));
+  }
+
   function getTaskOrder(){
     const applicable = state.tasks.filter(taskVisibleToday);
     const applicableIds = applicable.map(t=>t.id);
@@ -570,7 +595,8 @@
     let order = (state.taskOrder || []).filter(id=>applicableIds.includes(id));
     applicableIds.forEach(id=>{ if(!order.includes(id)) order.push(id); });
     state.taskOrder = order;
-    return order.map(id=> state.tasks.find(t=>t.id===id)).filter(Boolean);
+    const displayOrder = applyReadAnchor(order);
+    return displayOrder.map(id=> state.tasks.find(t=>t.id===id)).filter(Boolean);
   }
 
   function renderTaskList(){
