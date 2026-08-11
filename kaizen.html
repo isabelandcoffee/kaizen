@@ -303,6 +303,9 @@
       <div class="history-link" id="historyLink">View archived history →</div>
       <div class="history-link" id="updateWidgetLink">Update widget file →</div>
       <div class="history-link" id="scheduledElsewhereLink">View other scheduled tasks →</div>
+      <div class="history-link" id="backupDataLink">Backup data →</div>
+      <div class="history-link" id="restoreDataLink">Restore from backup →</div>
+      <input type="file" id="restoreFileInput" accept="application/json" style="display:none;">
       <textarea class="notes-area" id="notesArea" placeholder="Notes..." maxlength="500"></textarea>
     </div>
   </section>
@@ -438,6 +441,18 @@
     notes: ""
   };
 
+  // accepts either the current flat-array taskOrder shape, or the old per-day-object shape
+  // (from a backup exported before that migration), carrying forward the most recent day's order
+  function migrateTaskOrder(taskOrder){
+    if(Array.isArray(taskOrder)) return taskOrder;
+    if(taskOrder && typeof taskOrder==="object"){
+      const days = Object.keys(taskOrder).sort();
+      const latestDay = days[days.length-1];
+      return latestDay ? (taskOrder[latestDay] || []) : [];
+    }
+    return [];
+  }
+
   async function loadState(){
     try{
       const raw = window.localStorage.getItem(STORE_KEY);
@@ -445,16 +460,7 @@
         const p = JSON.parse(raw);
         state.tasks = p.tasks || state.tasks;
         state.taskLog = p.taskLog || {};
-        if(Array.isArray(p.taskOrder)){
-          state.taskOrder = p.taskOrder;
-        } else if(p.taskOrder && typeof p.taskOrder==="object"){
-          // migrate from the old per-day shape: carry forward the most recent day's order
-          const days = Object.keys(p.taskOrder).sort();
-          const latestDay = days[days.length-1];
-          state.taskOrder = latestDay ? (p.taskOrder[latestDay] || []) : [];
-        } else {
-          state.taskOrder = [];
-        }
+        state.taskOrder = migrateTaskOrder(p.taskOrder);
         state.shrine = p.shrine || state.shrine;
         if(!state.shrine.prayers) state.shrine.prayers = [];
         if(!state.shrine.centerpiece) state.shrine.centerpiece = "torii";
@@ -625,7 +631,11 @@
 
   function repeatLabel(repeat){
     if(repeat==="daily") return "Daily";
-    if(Array.isArray(repeat)) return repeat.map(d=>WD_NAMES[d]).join(" ");
+    if(Array.isArray(repeat)){
+      const sorted = repeat.slice().sort((a,b)=>a-b);
+      if(sorted.length===5 && sorted.join(",")==="1,2,3,4,5") return "Weekdays";
+      return sorted.map(d=>WD_NAMES[d]).join(" ");
+    }
     return "Daily";
   }
 
@@ -876,6 +886,45 @@
 
   const notesArea = document.getElementById("notesArea");
   notesArea.addEventListener("input", ()=>{ state.notes = notesArea.value; saveState(); });
+
+  // full backup: everything in state, not just the small widget snapshot — a real restore point
+  document.getElementById("backupDataLink").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "kaizen-backup-"+todayKey()+".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Backup saved — keep it somewhere safe");
+  });
+  document.getElementById("restoreDataLink").addEventListener("click", ()=>{
+    document.getElementById("restoreFileInput").click();
+  });
+  document.getElementById("restoreFileInput").addEventListener("change",(ev)=>{
+    const file = ev.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      ev.target.value = "";
+      let p;
+      try{ p = JSON.parse(reader.result); }
+      catch(e){ showToast("Couldn't read that file"); return; }
+      if(!confirm("This replaces everything you currently have with this backup. Continue?")) return;
+      state.tasks = p.tasks || [];
+      state.taskLog = p.taskLog || {};
+      state.taskOrder = migrateTaskOrder(p.taskOrder);
+      state.shrine = p.shrine || state.shrine;
+      if(!state.shrine.prayers) state.shrine.prayers = [];
+      if(!state.shrine.centerpiece) state.shrine.centerpiece = "torii";
+      state.tally = p.tally || state.tally;
+      state.notes = p.notes || "";
+      saveState();
+      renderAll();
+      notesArea.value = state.notes;
+      showToast("Backup restored");
+    };
+    reader.readAsText(file);
+  });
 
   // week strip: each dot fills left-to-right by the fraction of today's applicable tasks that
   // were done on that day, instead of only lighting up on a fully-complete day
