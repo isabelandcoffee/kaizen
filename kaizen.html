@@ -255,6 +255,13 @@
   .empty-note{ font-size: 12px; color: var(--ink-dim); text-align:center; padding: 18px 10px; }
   .history-link{ text-align:center; font-size:12px; font-style:italic; color: var(--primary-dark); margin-top:12px; cursor:pointer; }
   .history-link:active{ opacity:0.7; }
+  .notes-area{
+    width:100%; box-sizing:border-box; margin-top:14px; padding:12px; min-height:84px; resize:vertical;
+    background: var(--card-2); border: 1px solid var(--line); border-radius: 12px;
+    font-family: var(--font-body); font-size: 13px; color: var(--ink); line-height:1.5;
+  }
+  .notes-area::placeholder{ color: var(--ink-dim); }
+  .notes-area:focus{ outline: 2px solid var(--primary); outline-offset: -1px; }
   .history-list{ margin-top: 14px; max-height: 40vh; overflow-y:auto; }
   ::-webkit-scrollbar{ width:6px; height:6px; }
   ::-webkit-scrollbar-thumb{ background: var(--line); border-radius: 4px; }
@@ -295,6 +302,8 @@
       <div class="task-list" id="taskList"></div>
       <div class="history-link" id="historyLink">View archived history →</div>
       <div class="history-link" id="updateWidgetLink">Update widget file →</div>
+      <div class="history-link" id="scheduledElsewhereLink">View other scheduled tasks →</div>
+      <textarea class="notes-area" id="notesArea" placeholder="Notes..." maxlength="500"></textarea>
     </div>
   </section>
 
@@ -380,6 +389,17 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="scheduledOverlay">
+  <div class="modal-sheet">
+    <h2>Scheduled, not today</h2>
+    <div class="hint">Tasks set for specific days that don't include today. Tap ✎ to change a schedule.</div>
+    <div class="history-list" id="scheduledList"></div>
+    <div class="save-row">
+      <button class="btn" id="closeScheduledBtn">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -414,7 +434,8 @@
     },
     taskOrder: [], // [taskId,...] manual order for incomplete tasks — persists across midnight
     shrine: { theme:"sakura", prayers: [], centerpiece: "torii" },
-    tally: { count: 0 }
+    tally: { count: 0 },
+    notes: ""
   };
 
   async function loadState(){
@@ -438,6 +459,7 @@
         if(!state.shrine.prayers) state.shrine.prayers = [];
         if(!state.shrine.centerpiece) state.shrine.centerpiece = "torii";
         state.tally = p.tally || state.tally;
+        state.notes = p.notes || "";
       }
     }catch(e){ /* first run, defaults stand */ }
   }
@@ -653,8 +675,12 @@
       placeholder=null;
       const today = todayKey();
       const newIncompleteOrder = Array.from(list.querySelectorAll(".task-row:not(.completed)")).map(r=>r.dataset.id);
-      const completeIds = state.taskOrder.filter(id=> isTaskDone(id, today));
-      state.taskOrder = newIncompleteOrder.concat(completeIds);
+      // merge the new incomplete-only arrangement back into the full stored order by replaying
+      // it into the same relative slots, instead of pushing every completed task to the end —
+      // that way the original drag order survives regardless of what order things get checked
+      // off in, even across a midnight reset
+      const queue = newIncompleteOrder.slice();
+      state.taskOrder = state.taskOrder.map(id => isTaskDone(id, today) ? id : queue.shift());
       saveState();
       dragEl=null;
       document.removeEventListener("pointermove", onPointerMove);
@@ -819,6 +845,37 @@
     URL.revokeObjectURL(url);
     showToast("Save it to the Scriptable folder in Files");
   });
+
+  // tasks with a custom weekday schedule that just doesn't include today
+  const scheduledOverlay = document.getElementById("scheduledOverlay");
+  function renderScheduledList(){
+    const list = document.getElementById("scheduledList");
+    list.innerHTML = "";
+    const notToday = state.tasks.filter(t=>!taskAppliesToday(t));
+    if(!notToday.length){ list.innerHTML = '<div class="empty-note">Everything you have is scheduled for today.</div>'; return; }
+    notToday.forEach(t=>{
+      const row = document.createElement("div");
+      row.className = "task-row";
+      row.innerHTML =
+        '<span class="tname">'+escapeHtml(t.name)+'</span>'+
+        '<span class="trepeat">'+repeatLabel(t.repeat)+'</span>'+
+        '<button class="edit" title="Edit">✎</button>';
+      row.querySelector(".edit").addEventListener("click", ()=>{
+        scheduledOverlay.classList.remove("show");
+        openTaskModal(t);
+      });
+      list.appendChild(row);
+    });
+  }
+  document.getElementById("scheduledElsewhereLink").addEventListener("click", ()=>{
+    renderScheduledList();
+    scheduledOverlay.classList.add("show");
+  });
+  document.getElementById("closeScheduledBtn").addEventListener("click", ()=> scheduledOverlay.classList.remove("show"));
+  scheduledOverlay.addEventListener("click",(ev)=>{ if(ev.target===scheduledOverlay) scheduledOverlay.classList.remove("show"); });
+
+  const notesArea = document.getElementById("notesArea");
+  notesArea.addEventListener("input", ()=>{ state.notes = notesArea.value; saveState(); });
 
   // week strip: each dot fills left-to-right by the fraction of today's applicable tasks that
   // were done on that day, instead of only lighting up on a fully-complete day
@@ -1816,6 +1873,7 @@
     await loadState();
     renderAll();
     drawMoonIcon();
+    document.getElementById("notesArea").value = state.notes || "";
   })();
 
 })();
